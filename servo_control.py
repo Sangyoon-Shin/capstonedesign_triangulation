@@ -1,100 +1,115 @@
 # servo_control.py
-# test
-# 내가 작업하던게 있는 상태였어. 근데 형도 작업하던게 있어서 형이 먼저 올린거야.
-# 그러면 지금 형이 올린 코드랑 내가 수정한게 다르잖아.
-# 형꺼를 내가 pull을 받으면 내가 지금까지 수정하던게 날아가는 경우가 있을거같은데.. 
-# 위의 문제를 방지하는 방법이 있는가?
-import argparse, time, sys
+import argparse
+import time
+import sys
 import serial
+
+READY_WAIT_SEC = 2.0   # 아두이노 자동리셋 대기
 
 class DualServoController:
     def __init__(self, port="COM4", baud=115200, timeout=1.0):
         self.ser = serial.Serial(port, baudrate=baud, timeout=timeout)
-        # UNO는 포트 열면 리셋되므로 잠깐 대기
-        time.sleep(2.0)
+        time.sleep(READY_WAIT_SEC)
         self.ser.reset_input_buffer()
         self.ser.reset_output_buffer()
-        
-        # 웜업: 상태 한 번 읽어보기
-        self.query()
+        # 웜업: 상태 한 번 읽기(없어도 무방)
+        try:
+            self.query()
+        except Exception:
+            pass
 
+    # ---------------- low-level ----------------
     def _send(self, line: str) -> str:
+        """한 줄 명령을 보내고, 한 줄 응답을 문자열로 반환."""
         if not line.endswith("\n"):
             line += "\n"
-        self.ser.write(line.encode("ascii"))
+        self.ser.write(line.encode("utf-8"))
         self.ser.flush()
-        try:
-            resp = self.ser.readline().decode("ascii", errors="ignore").strip()
-        except Exception:
-            resp = ""
+        resp = self.ser.readline().decode("utf-8", errors="ignore").strip()
         return resp
 
-    # 기존 함수
-    def set_angles(self, pitch=None, yaw=None):
-        if pitch is not None and yaw is not None:
-            return self._send(f"S {float(pitch)} {float(yaw)}")
-        elif pitch is not None:
-            return self._send(f"P {float(pitch)}")
-        elif yaw is not None:
-            return self._send(f"Y {float(yaw)}")
-        else:
-            return "ERR no angles"
+    # ---------------- high-level ----------------
+    def set_angles(self, pitch_deg: float, yaw_deg: float) -> str:
+        """두 축 절대각 명령: 아두이노 'S p y'"""
+        cmd = f"S {float(pitch_deg):.2f} {float(yaw_deg):.2f}"
+        resp = self._send(cmd)
+        return resp  # 예: "OK S 96.80 88.50"
 
-    def center(self):
+    def set_pitch(self, pitch_deg: float) -> str:
+        return self._send(f"P {float(pitch_deg):.2f}")
+
+    def set_yaw(self, yaw_deg: float) -> str:
+        return self._send(f"Y {float(yaw_deg):.2f}")
+
+    def center(self) -> str:
         return self._send("C")
 
     def query(self):
-        return self._send("Q")
+        """상태 질의: 'STATE pitch yaw laser' 형태를 파싱해 dict 반환."""
+        resp = self._send("Q")
+        # 예: "STATE 96.80 88.50 1"
+        out = {"raw": resp, "pitch": None, "yaw": None, "laser": None}
+        try:
+            tok = resp.split()
+            if tok[0].upper() == "STATE":
+                out["pitch"] = float(tok[1])
+                out["yaw"]   = float(tok[2])
+                out["laser"] = int(tok[3]) if len(tok) > 3 else None
+        except Exception:
+            pass
+        return out
 
-    # 레이저 제어 추가
-    def laser_on(self):
-        return self._send("R")
+    # ----------- Laser (NEW) -----------
+    def laser_on(self) -> str:
+        """레이저 ON: 'L true'"""
+        return self._send("L true")
 
-    def laser_off(self):
-        return self._send("Z")
+    def laser_off(self) -> str:
+        """레이저 OFF: 'L false'"""
+        return self._send("L false")
 
+    # -----------------------------------
     def close(self):
         try:
             self.ser.close()
-        except:
+        except Exception:
             pass
 
+
+# ---------------- CLI test ----------------
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", default="COM4")
     ap.add_argument("--baud", type=int, default=115200)
-    ap.add_argument("--pitch", type=float)
-    ap.add_argument("--yaw", type=float)
     ap.add_argument("--center", action="store_true")
-    ap.add_argument("--sweep", action="store_true", help="양 축 60↔120도 스윕 테스트")
-    ap.add_argument("--laser_on", action="store_true", help="레이저 켜기")
-    ap.add_argument("--laser_off", action="store_true", help="레이저 끄기")
+    ap.add_argument("--pitch", type=float, help="absolute pitch (deg)")
+    ap.add_argument("--yaw",   type=float, help="absolute yaw (deg)")
+    ap.add_argument("--laser-on",  action="store_true")
+    ap.add_argument("--laser-off", action="store_true")
+    ap.add_argument("--query", action="store_true")
     args = ap.parse_args()
-    args.port = "COM4"
-    args.baud = 115200
 
     ctl = DualServoController(args.port, args.baud)
-
     try:
         if args.center:
             print(ctl.center())
-        if args.pitch is not None or args.yaw is not None:
+        if args.pitch is not None and args.yaw is not None:
             print(ctl.set_angles(args.pitch, args.yaw))
-        if args.sweep:
-            for a in range(60, 121, 5):
-                print(ctl.set_angles(a, a))
-                time.sleep(0.05)
-            for a in range(120, 59, -5):
-                print(ctl.set_angles(a, a))
-                time.sleep(0.05)
+        elif args.pitch is not None:
+            print(ctl.set_pitch(args.pitch))
+        elif args.yaw is not None:
+            print(ctl.set_yaw(args.yaw))
+
         if args.laser_on:
             print(ctl.laser_on())
         if args.laser_off:
             print(ctl.laser_off())
 
-        print(ctl.query())
+        if args.query or (not any([args.center, args.pitch is not None, args.yaw is not None, args.laser_on, args.laser_off])):
+            print(ctl.query())
     finally:
         ctl.close()
+
 
 if __name__ == "__main__":
     main()
