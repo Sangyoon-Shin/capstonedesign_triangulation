@@ -7,7 +7,7 @@ import serial
 READY_WAIT_SEC = 2.0   # 아두이노 자동리셋 대기
 
 class DualServoController:
-    def __init__(self, port="COM4", baud=115200, timeout=1.0):
+    def __init__(self, port="COM11", baud=115200, timeout=1.0):
         self.ser = serial.Serial(port, baudrate=baud, timeout=timeout)
         time.sleep(READY_WAIT_SEC)
         self.ser.reset_input_buffer()
@@ -79,7 +79,7 @@ class DualServoController:
 # ---------------- CLI test ----------------
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--port", default="COM4")
+    ap.add_argument("--port", default="COM11")
     ap.add_argument("--baud", type=int, default=115200)
     ap.add_argument("--center", action="store_true")
     ap.add_argument("--pitch", type=float, help="absolute pitch (deg)")

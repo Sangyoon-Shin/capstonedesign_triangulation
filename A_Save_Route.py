@@ -37,8 +37,8 @@ except Exception:
 NPZ_PATH       = r"C:\Users\user\Documents\캡스턴 디자인\triangulation\capstonedesign_triangulation\calib_out\old_camera_same\stereo\stereo_params_scaled.npz"
 MODEL_PATH     = r"C:\Users\user\Documents\캡스턴 디자인\triangulation\capstonedesign_triangulation\best_6.pt"
 
-CAM1_INDEX     = 1   # 왼쪽 카메라
-CAM2_INDEX     = 2   # 오른쪽 카메라
+CAM1_INDEX     = 2   # 왼쪽 카메라
+CAM2_INDEX     = 1   # 오른쪽 카메라
 
 SWAP_INPUT     = False   # 입력 좌/우 스왑
 SWAP_DISPLAY   = False   # 창 표시 좌/우 스왑
